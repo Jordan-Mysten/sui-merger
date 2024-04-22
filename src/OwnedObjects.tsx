@@ -1,30 +1,48 @@
 import {
   useCurrentAccount,
   useSignAndExecuteTransactionBlock,
-  useSuiClientQuery,
+  useSuiClientInfiniteQuery,
 } from "@mysten/dapp-kit";
 import { TransactionBlock } from "@mysten/sui.js/transactions";
 import { SUI_TYPE_ARG } from "@mysten/sui.js/utils";
-import { Button, Flex, Text } from "@radix-ui/themes";
+import { Button, Callout, Flex, Text } from "@radix-ui/themes";
+import { useLayoutEffect } from "react";
 
 const MAX_GAS_OBJECTS = 256;
 
 export function OwnedObjects() {
   const account = useCurrentAccount();
-  const { data, isPending, isRefetching, error, refetch } = useSuiClientQuery(
+  const {
+    data,
+    isPending,
+    isRefetching,
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+    error,
+    refetch,
+  } = useSuiClientInfiniteQuery(
     "getCoins",
     {
-      owner: account!.address,
+      owner:
+        "0x4574d63f4ee834c9b3816efe8f7d77a4268bc55f37c527bf93c859a67627a61e" ||
+        account!.address,
       coinType: SUI_TYPE_ARG,
+      limit: 50,
     },
     {
       enabled: !!account,
     },
   );
 
+  useLayoutEffect(() => {
+    if (!isFetchingNextPage && hasNextPage) {
+      fetchNextPage();
+    }
+  }, [isFetchingNextPage, hasNextPage]);
+
   const signAndExecuteTransactionBlock = useSignAndExecuteTransactionBlock({
     async onSuccess() {
-      console.log("done");
       await new Promise((resolve) => setTimeout(resolve, 1000));
       await refetch();
     },
@@ -38,15 +56,21 @@ export function OwnedObjects() {
     return <Flex>Error: {error.message}</Flex>;
   }
 
-  if (isPending || !data) {
+  if (isPending || isFetchingNextPage || !data) {
     return <Flex>Loading...</Flex>;
   }
+
+  const coins = data.pages
+    .flatMap((page) => page.data)
+    .sort((a, b) => {
+      return Number(b.balance) - Number(a.balance);
+    });
 
   const merge = () => {
     const txb = new TransactionBlock();
     txb.setSender(account!.address);
     txb.setGasPayment(
-      data.data.slice(0, MAX_GAS_OBJECTS - 1).map((coin) => ({
+      coins.slice(0, MAX_GAS_OBJECTS - 1).map((coin) => ({
         objectId: coin.coinObjectId,
         version: coin.version,
         digest: coin.digest,
@@ -61,12 +85,20 @@ export function OwnedObjects() {
         <strong>Address:</strong> {account.address}
       </Text>
 
-      {data.data.length === 0 ? (
+      {signAndExecuteTransactionBlock.error && (
+        <Callout.Root color="red" size="1">
+          <Callout.Text>
+            Error: {String(signAndExecuteTransactionBlock.error.message)}
+          </Callout.Text>
+        </Callout.Root>
+      )}
+
+      {coins.length === 0 ? (
         <Text>Wallet does not hold any SUI.</Text>
       ) : (
         <>
-          <Text>Wallet holds {data.data.length} SUI Objects</Text>
-          {data.data.length > 1 && (
+          <Text>Wallet holds {coins.length} SUI Objects</Text>
+          {coins.length > 1 && (
             <Button
               disabled={
                 signAndExecuteTransactionBlock.isPending || isRefetching
@@ -74,7 +106,7 @@ export function OwnedObjects() {
               onClick={() => merge()}
             >
               {signAndExecuteTransactionBlock.isPending
-                ? "Waiting for transaction..."
+                ? "Waiting for tra>nsaction..."
                 : isRefetching
                   ? "Refetching data..."
                   : "Merge"}
