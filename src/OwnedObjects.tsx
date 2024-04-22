@@ -24,9 +24,7 @@ export function OwnedObjects() {
   } = useSuiClientInfiniteQuery(
     "getCoins",
     {
-      owner:
-        "0x4574d63f4ee834c9b3816efe8f7d77a4268bc55f37c527bf93c859a67627a61e" ||
-        account!.address,
+      owner: account!.address,
       coinType: SUI_TYPE_ARG,
       limit: 50,
     },
